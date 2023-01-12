@@ -1,4 +1,4 @@
-### 参考 [django-celery-beat]("https://github.com/celery/django-celery-beat")实现的基于sqlalchemy的beat
+### 参考 [django-celery-beat](https://github.com/celery/django-celery-beat)实现的基于sqlalchemy的beat
 
 ### 仅供学习用
 
