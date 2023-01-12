@@ -7,7 +7,7 @@ from sqlalchemy.orm import sessionmaker,scoped_session,relationship,validates
 import os
 import sqlalchemy as sa
 from celery import schedules, current_app
-# from utils import make_aware,now
+from validators import hour_validator,minute_validator,day_of_month_validator,day_of_week_validator,month_of_year_validator
 from datetime import timedelta
 from celery.utils.log import get_logger
 
@@ -33,12 +33,29 @@ class Base(object):
 DeclarativeBase = declarative_base(cls=Base)
 
 class CrontabSchedule(DeclarativeBase):
-    """Timezone Aware Crontab-like schedule.
+    """
+        Timezone Aware Crontab-like schedule.
 
-    Example:  Run every hour at 0 minutes for days of month 10-15:
+        @https://cron.qqe2.com/
 
-    >>> minute="0", hour="*", day_of_week="*",
-    ... day_of_month="10-15", month_of_year="*"
+        crontab:
+            *    *    *    *   *
+            |    |    |    |   |____星期(0-7)
+            |    |    |    |________月份1--12
+            |    |    |_____________日期1--31
+            |    |__________________小时0--23
+            |_______________________分钟0--59
+        
+        *:表示所有
+        a-b:表示 a到b
+        a,b:表示a和b
+        a-b/c:表示a-b中每隔c
+
+        例1: 每天晚上23点到第二天7点之间，每隔一小时执行一次:  * 23-7/1 * * *
+        例2: 在指定的月份执行一次（在1月,4月和 6月每天晚上0点执行一次）: 0 0 * jan,apr,jun *
+        例3: 每天18 : 00至23 : 00之间每隔30分钟执行一次: 0,30 18-23 * * *
+
+
     """
     __tablename__ = "crontab_schedule"
 
@@ -57,19 +74,19 @@ class CrontabSchedule(DeclarativeBase):
     day_of_week = sa.Column(
         sa.String(length=64),
         default='*',
-        comment='Cron Days Of The Week to Run. Use "*" for "all". (Example: "0,5")',
+        comment='日期. Use "*" for "all". (Example: "0,5")',
         # validators=[validators.day_of_week_validator],
     )
     day_of_month = sa.Column(
         sa.String(length=31 * 4),
         default='*',
-        comment='Cron Days Of The Month to Run. Use "*" for "all". (Example: "1,15")',
+        comment='月份. Use "*" for "all". (Example: "1,15")',
         # validators=[validators.day_of_month_validator],
     )
     month_of_year = sa.Column(
         sa.String(length=64),
         default='*',
-        comment='Cron Months Of The Year to Run. Use "*" for "all". (Example: "0,6")',
+        comment='年份. Use "*" for "all". (Example: "0,6")',
         # validators=[validators.month_of_year_validator],
     )
 
@@ -101,6 +118,7 @@ class CrontabSchedule(DeclarativeBase):
 
     @classmethod
     def from_schedule(cls, session,schedule):
+        ## schedule: celery.scheduler.crontab
         spec = {'minute': schedule._orig_minute,
                 'hour': schedule._orig_hour,
                 'day_of_week': schedule._orig_day_of_week,
@@ -118,6 +136,26 @@ class CrontabSchedule(DeclarativeBase):
                 return new
         finally:
             session.commit()
+
+    @validates("minute")
+    def validate_minute(self,key,value):
+        return minute_validator(value=value)
+
+    @validates("hour")
+    def validate_hour(self,key,value):
+        return hour_validator(value=value)
+
+    @validates("day_of_week")
+    def validate_day_of_week(self,key,value):
+        return day_of_week_validator(value=value)
+
+    @validates("day_of_month")
+    def validate_day_of_month(self,key,value):
+        return day_of_month_validator(value=value)
+
+    @validates("month_of_year")
+    def validate_month_of_year(self,key,value):
+        return month_of_year_validator(value=value)
 
 
 DAYS = 'days'
