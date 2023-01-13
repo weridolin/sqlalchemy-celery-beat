@@ -183,6 +183,9 @@ SINGULAR_PERIODS = (
 class IntervalSchedule(DeclarativeBase):
     """
         每个多少秒发送一次任务.定时周期支持 /days/hours/minutes/seconds/microseconds
+
+        例1: 每隔10秒发送一次: every=10, period=SECONDS
+        例2: 每隔10分钟发送一次: every=10, period=MINUTES
     >>> every=2, period=DAYS
     """
 
@@ -296,8 +299,14 @@ class PeriodicTask(DeclarativeBase):
     interval_id = sa.Column(sa.INTEGER,sa.ForeignKey("interval_schedule.id"))
     interval = relationship("IntervalSchedule")
 
-    # crontab_id = sa.Column(sa.INTEGER,sa.ForeignKey("crontab_schedule.id",ondelete='CASCADE'))
-    # crontab = relationship("CrontabSchedule")
+    crontab_id = sa.Column(sa.INTEGER,sa.ForeignKey("crontab_schedule.id"))
+    crontab = relationship("CrontabSchedule")
+
+    # solar_id = sa.Column(sa.INTEGER,sa.ForeignKey("solar_schedule.id"))
+    # solar = relationship("SolarSchedule")
+
+    # clocked_id = sa.Column(sa.INTEGER,sa.ForeignKey("clocked_schedule.id"))
+    # clocked = relationship("ClockedSchedule")
     # solar = models.ForeignKey(
     #     SolarSchedule, on_delete=models.CASCADE, null=True, blank=True,
     #     verbose_name=_('Solar Schedule'),
@@ -419,7 +428,10 @@ class PeriodicTask(DeclarativeBase):
     )
 
     # objects = managers.PeriodicTaskManager() WHAT THIS?
+    # 如果是scheduler运行过程中堆model的修改，no_changes字段会被设置为true,
+    # 不会触发修改到 periodic-tasks表
     no_changes = False
+
     def _clean_expires(self):
         if self.expire_seconds is not None and self.expires:
             raise RuntimeError(
@@ -447,8 +459,8 @@ class PeriodicTask(DeclarativeBase):
         """该定时任务对应的schedule"""
         if self.interval:
             return self.interval.schedule
-        # if self.crontab:
-        #     return self.crontab.schedule
+        if self.crontab:
+            return self.crontab.schedule
         # if self.solar:
         #     return self.solar.schedule
         # if self.clocked:
@@ -458,12 +470,12 @@ class PeriodicTask(DeclarativeBase):
 
 @event.listens_for(PeriodicTask, 'after_delete')
 def receive_after_delete(mapper, connection, target):
-    print("delete Periodic Task")
+    # print("delete Periodic Task")
     update_change_time(connection,target)
 
 @event.listens_for(PeriodicTask, 'after_insert')
 def receive_after_insert(mapper, connection, target):
-    print("insert Periodic Task")
+    # print("insert Periodic Task")
     update_change_time(connection,target)
 
 @event.listens_for(PeriodicTask, 'after_update')
@@ -475,8 +487,9 @@ def receive_after_update(mapper, connection, target):
 from sqlalchemy import select,insert,update
 def update_change_time(conn,instance):
     ### 这里是更新修改记录表
+    # if not instance.no_changes:
     if not instance.no_changes:
-        logger.info(f"detect a periodic change, update change time...:{datetime.datetime.now()}")
+        logger.info(f"detect a periodic change, update table[periodic_tasks] change time...:{datetime.datetime.now()}")
         record = conn.execute(select(PeriodicTasks).where(PeriodicTasks.id == 1)).fetchone()
         if record:
             conn.execute(update(PeriodicTasks).where(PeriodicTasks.id == 1).values(last_update=datetime.datetime.now()))
@@ -484,24 +497,23 @@ def update_change_time(conn,instance):
             conn.execute(insert(PeriodicTasks).values(last_update=datetime.datetime.now()))
 
 
-
 if __name__=="__main__":
     import sqlalchemy.orm.identity
-    import threading
-    import sqlalchemy.orm.state
-    from sqlalchemy import inspect
-    DeclarativeBase.metadata.create_all(engine)
-    session1 = SessionFactory()
+    # import threading
+    # import sqlalchemy.orm.state
+    # from sqlalchemy import inspect
+    # DeclarativeBase.metadata.create_all(engine)
+    # session1 = SessionFactory()
 
     
-    tasks=PeriodicTask(
-        interval_id=1,                  # we created this above.
-        name='TestTask1-23',          # simply describes this periodic task.
-        task='core.celery.test_task',  # name of task.
-        args=8,
-    )
-    session1.add(tasks)
-    session1.commit()
+    # tasks=PeriodicTask(
+    #     interval_id=1,                  # we created this above.
+    #     name='TestTask1-23',          # simply describes this periodic task.
+    #     task='core.celery.test_task',  # name of task.
+    #     args=8,
+    # )
+    # session1.add(tasks)
+    # session1.commit()
 
 
     # t = threading.Thread(target=tar)

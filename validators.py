@@ -1,7 +1,7 @@
 """Validators."""
 
 import crontab
-from django.core.exceptions import ValidationError
+# from django.core.exceptions import ValidationError
 
 
 class _CronSlices(crontab.CronSlices):

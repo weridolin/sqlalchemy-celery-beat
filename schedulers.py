@@ -1,35 +1,36 @@
 """Beat Scheduler Implementation."""
-import os,sys
-sys.path.append(os.path.dirname(__file__))
-from cmath import log
-import datetime
-import logging
-import math
-
-from multiprocessing.util import Finalize
-from celery import current_app
-from celery import schedules
-from celery.beat import Scheduler, ScheduleEntry
-
-from celery.utils.log import get_logger
-from celery.utils.time import maybe_make_aware
-from kombu.utils.encoding import safe_str, safe_repr
-from kombu.utils.json import dumps, loads
-
-
-
+from sqlalchemy.orm import scoped_session
+from db import SessionFactory
+from utils import NEVER_CHECK_TIMEOUT
 from models import (
-    PeriodicTask, PeriodicTasks,IntervalSchedule,CrontabSchedule
+    PeriodicTask, PeriodicTasks, IntervalSchedule, CrontabSchedule
     # CrontabSchedule, IntervalSchedule,
     # SolarSchedule, ClockedSchedule
 )
+from kombu.utils.json import dumps, loads
+from kombu.utils.encoding import safe_str, safe_repr
+from celery.utils.time import maybe_make_aware
+from celery.utils.log import get_logger
+from celery.beat import Scheduler, ScheduleEntry
+from celery import schedules
+from celery import current_app
+from multiprocessing.util import Finalize
+import time
+import math
+import logging
+import datetime
+from cmath import log
+import os
+import sys
+sys.path.append(os.path.dirname(__file__))
+
+
 # from clockedschedule import clocked
-from utils import NEVER_CHECK_TIMEOUT
 
 # This scheduler must wake up more frequently than the
 # regular of 5 minutes because it needs to take external
 # changes to the schedule into account.
-DEFAULT_MAX_INTERVAL = 10  # seconds
+DEFAULT_MAX_INTERVAL = 60  # seconds
 
 ADD_ENTRY_ERROR = """\
 Cannot add entry %r to database schedule: %r. Contents: %r
@@ -40,12 +41,12 @@ debug, info, warning = logger.debug, logger.info, logger.warning
 
 
 class ModelEntry(ScheduleEntry):
-    ### model-row 转换成 task对象
+    # model-row 转换成 task对象
     """Scheduler entry taken from database row."""
 
     # schedule对应的 schedule model
     model_schedules = (
-        # (schedules.crontab, CrontabSchedule, 'crontab'),
+        # (schedules.crontab, CrontabSchedule, 'crontab'),\\\
         (schedules.schedule, IntervalSchedule, 'interval'),
         # (schedules.solar, SolarSchedule, 'solar'),
         # (clocked, ClockedSchedule, 'clocked')
@@ -54,23 +55,23 @@ class ModelEntry(ScheduleEntry):
     # 每一次调用后,该task row需要保存的字段
     save_fields = ['last_run_at', 'total_run_count', 'no_changes']
 
-    def __init__(self, model, app=None,session=None):
+    def __init__(self, model, app=None, session=None):
         """ 
             Initialize the model entry.
             model为定义的periodic task表中的item
         """
-        self.app = app or current_app._get_current_object() # celery app
-        self.name = model.name # 任务名称
-        self.task = model.task # 任务对应的函数路径,例如 project.tasks.taskfunc
-        self.session=session # 该task绑定的session
+        self.app = app or current_app._get_current_object()  # celery app
+        self.name = model.name  # 任务名称
+        self.task = model.task  # 任务对应的函数路径,例如 project.tasks.taskfunc
+        self.session = session  # 该task绑定的session
         try:
-            ## 每个定时任务必须对应一个调度计划,每个调度计划可以对应多个定时任务
+            # 每个定时任务必须对应一个调度计划,每个调度计划可以对应多个定时任务
             self.schedule = model.schedule
         except AttributeError:
             logger.error(f'任务{self.name}对应的schedule被取消.将该任务状态设置为 enable...')
-            self._disable(model) # 把该定时任务设置为不可用状态
+            self._disable(model)  # 把该定时任务设置为不可用状态
         try:
-            ## 加载定时任务的参数,json序列化再保存的
+            # 加载定时任务的参数,json序列化再保存的
             self.args = loads(model.args or '[]')
             self.kwargs = loads(model.kwargs or '{}')
         except ValueError as exc:
@@ -85,7 +86,7 @@ class ModelEntry(ScheduleEntry):
                 continue
             self.options[option] = value
 
-        ## 任务超时限制
+        # 任务超时限制
         if getattr(model, 'expires_', None):
             self.options['expires'] = getattr(model, 'expires_')
 
@@ -96,16 +97,16 @@ class ModelEntry(ScheduleEntry):
         # 任务运行的次数
         self.total_run_count = model.total_run_count
         # 对应的数据库记录
-        self.model = model 
+        self.model = model
 
         # 上次运行时间
-        if not model.last_run_at: # 上次运行时间
+        if not model.last_run_at:  # 上次运行时间
             model.last_run_at = self._default_now()
 
         self.last_run_at = model.last_run_at
 
     def _disable(self, model):
-        ## 将 定时任务设置为 enabled
+        # 将 定时任务设置为 enabled
         model.no_changes = True
         model.enabled = False
         self.save()
@@ -133,8 +134,8 @@ class ModelEntry(ScheduleEntry):
         if self.model.one_off and self.model.enabled and self.model.total_run_count > 0:
             # 停用该task,所有的状态初始化
             self.model.enabled = False
-            self.model.total_run_count = 0  
-            self.model.no_changes = False 
+            self.model.total_run_count = 0
+            self.model.no_changes = False
             self.save()
             return schedules.schedstate(False, NEVER_CHECK_TIMEOUT)
 
@@ -144,7 +145,8 @@ class ModelEntry(ScheduleEntry):
         last_run_at_in_tz = maybe_make_aware(self.last_run_at).astimezone(tz)
 
         # 返回 tuple(当前是否应该运行,下次检测时间间隔)
-        return self.schedule.is_due(last_run_at_in_tz) # self.schedule is module.schedule
+        # self.schedule is module.schedule
+        return self.schedule.is_due(last_run_at_in_tz)
 
     def _default_now(self):
         now = datetime.datetime.utcnow()
@@ -154,56 +156,61 @@ class ModelEntry(ScheduleEntry):
         # 生成下次运行时对应的 modelEntry
         self.model.last_run_at = self._default_now()
         self.model.total_run_count += 1
+        # 防止去更新到[periodic_tasks]表,[periodic_tasks]表只限于非scheduler下的更新才会去更新
         self.model.no_changes = True
-        self.save()
-        return self.__class__(self.model,session=self.session)
+        # self.model.test_attr = 2
+        # self.save()
+        return self.__class__(self.model, session=self.session)
+    
     next = __next__  # for 2to3
 
     def save(self):
-        # 保存当前的entry对应的model    
-        obj =self.session.query(type(self.model)).get(self.model.id)
+        # 保存当前的entry对应的model
+        obj = self.session.query(type(self.model)).get(self.model.id)
         if obj:
             for field in self.save_fields:
                 setattr(obj, field, getattr(self.model, field))
         self.session.commit()
 
     @classmethod
-    def to_model_schedule(cls,session, schedule):
+    def to_model_schedule(cls, session, schedule):
         for schedule_type, model_type, model_field in cls.model_schedules:
             schedule = schedules.maybe_schedule(schedule)
             if isinstance(schedule, schedule_type):
-                model_schedule = model_type.from_schedule(session,schedule)
+                model_schedule = model_type.from_schedule(session, schedule)
                 return model_schedule, model_field
-        raise ValueError('Cannot convert schedule type {0!r} to model'.format(schedule))
+        raise ValueError(
+            'Cannot convert schedule type {0!r} to model'.format(schedule))
 
     @classmethod
-    def from_entry(cls, name, app=None, session=None,**entry):
+    def from_entry(cls, name, app=None, session=None, **entry):
         # with SessionFactory() as session:
-        params = cls._unpack_fields(session=session,**entry)
+        params = cls._unpack_fields(session=session, **entry)
         logger.info(f"update or create task from entry:{params}")
-        crontab_schedule = params.pop("crontab",None)
-        interval_schedule = params.pop("interval",None)
+        crontab_schedule = params.pop("crontab", None)
+        interval_schedule = params.pop("interval", None)
         task = session.query(PeriodicTask).filter_by(name=name).first()
 
         if task:
-            for k,v in params.items():
-                if hasattr(task,k):
-                    setattr(task,k,v)
+            for k, v in params.items():
+                if hasattr(task, k):
+                    setattr(task, k, v)
         else:
             if crontab_schedule:
-                task = PeriodicTask(crontab_id=crontab_schedule.id,name=name,**params)
+                task = PeriodicTask(
+                    crontab_id=crontab_schedule.id, name=name, **params)
             elif interval_schedule:
-                task = PeriodicTask(interval_id=interval_schedule.id,name=name,**params)
+                task = PeriodicTask(
+                    interval_id=interval_schedule.id, name=name, **params)
             session.add(task)
         session.commit()
-        return cls(model=task,app=app,session=session)
-
+        return cls(model=task, app=app, session=session)
 
     @classmethod
-    def _unpack_fields(cls,session, schedule,
-                    args=None, kwargs=None, relative=None, options=None,
-                    **entry): #
-        model_schedule, model_field = cls.to_model_schedule(session,schedule)
+    def _unpack_fields(cls, session, schedule,
+                       args=None, kwargs=None, relative=None, options=None,
+                       **entry):
+        model_schedule, model_field = cls.to_model_schedule(session, schedule)
         entry.update(
             {model_field: model_schedule},
             args=dumps(args or []),
@@ -231,6 +238,7 @@ class ModelEntry(ScheduleEntry):
             safe_repr(self.kwargs), self.schedule,
         )
 
+
 """
     每个DatabaseScheduler实例会保存所有的tasks信息。每隔一定的时间间隔会调用sync方法去更新,sync方法中会去调用到schedule属性.并且会去调用对应的 
     schedule方法,schedule方法会根据scheduler属性和PeriodicTasks中的最后更新进行比较(参考model.py,如果task表/schedule表更新后,会去对应update
@@ -246,8 +254,6 @@ class ModelEntry(ScheduleEntry):
 
 """
 
-from db import SessionFactory
-from sqlalchemy.orm import scoped_session
 
 class DatabaseScheduler(Scheduler):
     """Database-backed Beat Scheduler."""
@@ -261,14 +267,18 @@ class DatabaseScheduler(Scheduler):
     _initial_read = True
     _heap_invalidated = False
 
-    session = scoped_session(session_factory=SessionFactory)
+    sync_at_once=True
+
+    # session = scoped_session(session_factory=SessionFactory)
 
     def __init__(self, *args, **kwargs):
         """Initialize the database scheduler."""
         self._dirty = set()
-
-        self.session.expire_on_commit=False # @https://docs.sqlalchemy.org/en/14/errors.html#error-bhk3 
         
+        self.session = scoped_session(session_factory=SessionFactory)
+        # @https://docs.sqlalchemy.org/en/14/errors.html#error-bhk3
+        self.session.expire_on_commit = False
+
         Scheduler.__init__(self, *args, **kwargs)
         self._finalize = Finalize(self, self.sync, exitpriority=5)
         self.max_interval = (
@@ -277,8 +287,9 @@ class DatabaseScheduler(Scheduler):
             or DEFAULT_MAX_INTERVAL)
 
     def setup_schedule(self):
-        ## TODO config scheduler in config file
-        logger.info("dataBase Scheduler setup up,load config schedule and syc to dataBase") 
+        # TODO config scheduler in config file
+        logger.info(
+            "dataBase Scheduler setup up,load config schedule and syc to dataBase")
         self.install_default_entries(self.schedule)
         self.update_from_dict(self.app.conf.beat_schedule)
 
@@ -286,19 +297,22 @@ class DatabaseScheduler(Scheduler):
         debug('DatabaseScheduler: Fetching database schedule')
         s = {}
         tasks = self.session.query(PeriodicTask).filter_by(enabled=True).all()
-        logger.info(f"get all task from periodic table and sync to scheduler:{tasks}")
         for model in tasks:
             try:
-                s[model.name] = self.Entry(model, app=self.app,session=self.session)
+                s[model.name] = self.Entry(
+                    model, app=self.app, session=self.session)
             except ValueError:
                 pass
+        logger.info(
+            f"get all task from periodic table and sync to scheduler:{s.values()}")
         return s
 
     def schedule_changed(self):
         try:
             # 检测任务是否有修改
-            logger.info("check last change time")
-            last, ts = self._last_timestamp, self.Changes.last_change(session=self.session)
+            # logger.info("check last change time")
+            last, ts = self._last_timestamp, self.Changes.last_change(
+                session=self.session)
         except Exception as exc:
             print(exc)
             warning(
@@ -320,23 +334,35 @@ class DatabaseScheduler(Scheduler):
         self._dirty.add(new_entry.name)
         return new_entry
 
+    def should_sync(self):
+        # 同步运行中的tasks的状态到数据库中的条件:
+        # 1.第一次运行:(_last_sync为None)
+        # 2.当前时间距离上次同步时间小于设置的同步时间 sync_every
+        # 3.待同步的任务数量(_tasks_since_sync)大于设置的最小数量(sync_every_tasks
+        res =  (
+            (not self._last_sync or
+                (time.monotonic() - self._last_sync) > self.sync_every) or
+            (self.sync_every_tasks and
+                self._tasks_since_sync >= self.sync_every_tasks)
+        )
+        return res
+
     def sync(self):
-        ## 同步下数据库中的task
-        if logger.isEnabledFor(logging.DEBUG):
-            debug('sync tasks ing...')
+        # 如果task在运行过程中被修改了(比如运行次数,上次运行时间),则调用modelEntity.save()同步到数据库
+        logger.info("sys task ing ....")
         _tried = set()
         _failed = set()
         try:
-            # close_old_connections()
             while self._dirty:
                 name = self._dirty.pop()
                 try:
+                    logger.info(f"sync task:{name} to database")
                     self.schedule[name].save()
                     _tried.add(name)
                 except (KeyError):
                     _failed.add(name)
         except Exception as exc:
-            logger.error(f"sync tasks error:{exc}",exc_info=True)
+            logger.error(f"sync tasks error:{exc}", exc_info=True)
         finally:
             # retry later, only for the failed ones
             self._dirty |= _failed
@@ -345,7 +371,8 @@ class DatabaseScheduler(Scheduler):
         s = {}
         for name, entry_fields in mapping.items():
             try:
-                entry = self.Entry.from_entry(name,app=self.app,session=self.session,**entry_fields)
+                entry = self.Entry.from_entry(
+                    name, app=self.app, session=self.session, **entry_fields)
                 if entry.model.enabled:
                     s[name] = entry
             except Exception as exc:
@@ -355,7 +382,6 @@ class DatabaseScheduler(Scheduler):
     def install_default_entries(self, data):
         # 添加默认的 celery.backend_cleanup任务,只要启动就添加
         entries = {}
-        logger.info(f"celery app config :{self.app.conf}")
         # if self.app.conf.result_expires:
         #     # 定时清理后台任务
         #     entries.setdefault(
@@ -365,7 +391,7 @@ class DatabaseScheduler(Scheduler):
         #             'options': {'expire_seconds': 12 * 3600},
         #         },
         #     )
-        self.update_from_dict(entries) # 写入task到数据库
+        self.update_from_dict(entries)  # 写入task到数据库
 
     def schedules_equal(self, *args, **kwargs):
         if self._heap_invalidated:
@@ -373,6 +399,7 @@ class DatabaseScheduler(Scheduler):
             return False
         return super().schedules_equal(*args, **kwargs)
 
+    # 存放tasks的优先队列
     @property
     def schedule(self):
         initial = update = False
@@ -387,7 +414,7 @@ class DatabaseScheduler(Scheduler):
         if update:
             info(f"scheduler change,begin to sync")
             self.sync()
-            self._schedule = self.all_as_schedule() ## {model.name:modelEntity}
+            self._schedule = self.all_as_schedule()  # {model.name:modelEntity}
             # the schedule changed, invalidate the heap in Scheduler.tick
             if not initial:
                 self._heap = []

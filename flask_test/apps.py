@@ -10,8 +10,7 @@ from db import SessionFactory
 app = Flask("test_celery")
 
 
-from sqlalchemy import select
-@app.route("/create")
+@app.route("/create1")
 def create_task():
     with SessionFactory() as session:
         # session.expire_on_commit=False
@@ -35,7 +34,31 @@ def create_task():
         session.commit()
     return "ok"
 
+@app.route("/create2")
+def create_crontab_task():
+    with SessionFactory() as session:
+        # session.expire_on_commit=False
+        schedule = session.query(IntervalSchedule).filter_by(every=10,period=IntervalSchedule.SECONDS).first()
+        if not schedule:
+            schedule = IntervalSchedule(
+                every=10,period=IntervalSchedule.SECONDS
+            )
+            session.add(schedule) 
+            session.flush()
 
+        task = session.query(PeriodicTask).filter_by(name='TestTask1-232').first()
+        if not task:
+            task=PeriodicTask(
+                interval_id=schedule.id,      
+                name='TestTask1-232',        
+                task='task.test_task',  
+                args=json.dumps([8]),
+            )
+            session.add(task)
+        session.commit()
+    return "ok"
+
+import time
 @app.route("/update")
 def update_task():
     with SessionFactory() as session:
@@ -43,7 +66,10 @@ def update_task():
         record.task = 'task.test_task_update'
         record.enabled=True
         record.one_off=False
+        record.no_changes =True
         # session.add(tasks)
+        # print(record.no_changes)
+        time.sleep(100)
         session.commit()
 
     return "ok"
