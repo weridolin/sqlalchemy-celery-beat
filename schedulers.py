@@ -136,6 +136,8 @@ class ModelEntry(ScheduleEntry):
             self.model.enabled = False
             self.model.total_run_count = 0
             self.model.no_changes = False
+            # 运行完的task状态更新回数据库
+            # todo 已经加载的record不用每次都马上commit? 
             self.save()
             return schedules.schedstate(False, NEVER_CHECK_TIMEOUT)
 
@@ -154,14 +156,15 @@ class ModelEntry(ScheduleEntry):
 
     def __next__(self):
         # 生成下次运行时对应的 modelEntry
+        # sqlalchemy 默认开启事务
         self.model.last_run_at = self._default_now()
         self.model.total_run_count += 1
-        # 防止去更新到[periodic_tasks]表,[periodic_tasks]表只限于非scheduler下的更新才会去更新
+        # 防止去更新到[periodic_tasks]表,
+        # [periodic_tasks]表只限于非scheduler下的更新才会去更新
         self.model.no_changes = True
-        # self.model.test_attr = 2
         # self.save()
         return self.__class__(self.model, session=self.session)
-    
+
     next = __next__  # for 2to3
 
     def save(self):
@@ -267,17 +270,18 @@ class DatabaseScheduler(Scheduler):
     _initial_read = True
     _heap_invalidated = False
 
-    sync_at_once=True
+    # sync_at_once = True
 
     # session = scoped_session(session_factory=SessionFactory)
 
     def __init__(self, *args, **kwargs):
         """Initialize the database scheduler."""
         self._dirty = set()
-        
+
         self.session = scoped_session(session_factory=SessionFactory)
         # @https://docs.sqlalchemy.org/en/14/errors.html#error-bhk3
-        self.session.expire_on_commit = False
+        # 不自动刷新,根据配置来进行刷新.参考  should_sync()/sync()
+        self.session.autoflush=False
 
         Scheduler.__init__(self, *args, **kwargs)
         self._finalize = Finalize(self, self.sync, exitpriority=5)
@@ -339,13 +343,10 @@ class DatabaseScheduler(Scheduler):
         # 1.第一次运行:(_last_sync为None)
         # 2.当前时间距离上次同步时间小于设置的同步时间 sync_every
         # 3.待同步的任务数量(_tasks_since_sync)大于设置的最小数量(sync_every_tasks
-        res =  (
-            (not self._last_sync or
-                (time.monotonic() - self._last_sync) > self.sync_every) or
+        return (not self._last_sync or
+                (time.monotonic() - self._last_sync) > self.sync_every) or \
             (self.sync_every_tasks and
-                self._tasks_since_sync >= self.sync_every_tasks)
-        )
-        return res
+                self._tasks_since_sync >= self.sync_every_tasks)       
 
     def sync(self):
         # 如果task在运行过程中被修改了(比如运行次数,上次运行时间),则调用modelEntity.save()同步到数据库
@@ -357,7 +358,7 @@ class DatabaseScheduler(Scheduler):
                 name = self._dirty.pop()
                 try:
                     logger.info(f"sync task:{name} to database")
-                    self.schedule[name].save()
+                    self.schedule[name].save()  # modelEntity.save()
                     _tried.add(name)
                 except (KeyError):
                     _failed.add(name)

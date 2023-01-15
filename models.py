@@ -32,6 +32,10 @@ class Base(object):
 
 DeclarativeBase = declarative_base(cls=Base)
 
+def cronexp(field):
+    """Representation of cron expression."""
+    return field and str(field).replace(' ', '') or '*'
+
 class CrontabSchedule(DeclarativeBase):
     """
         Timezone Aware Crontab-like schedule.
@@ -97,12 +101,14 @@ class CrontabSchedule(DeclarativeBase):
     # )
 
 
-    # def __str__(self):
-    #     return '{0} {1} {2} {3} {4} (m/h/dM/MY/d) {5}'.format(
-    #         cronexp(self.minute), cronexp(self.hour),
-    #         cronexp(self.day_of_month), cronexp(self.month_of_year),
-    #         cronexp(self.day_of_week), str(self.timezone)
-    #     )
+    def __str__(self):
+        return '{0} {1} {2} {3} {4} (m/h/dM/MY/d) {5}'.format(
+            cronexp(self.minute), cronexp(self.hour),
+            cronexp(self.day_of_month), cronexp(self.month_of_year),
+            cronexp(self.day_of_week), 
+            # str(self.timezone)
+            ""
+        )
 
     @property
     def schedule(self):
@@ -139,23 +145,28 @@ class CrontabSchedule(DeclarativeBase):
 
     @validates("minute")
     def validate_minute(self,key,value):
-        return minute_validator(value=value)
+        minute_validator(value=value)
+        return value
 
     @validates("hour")
     def validate_hour(self,key,value):
-        return hour_validator(value=value)
+        hour_validator(value=value)
+        return value
 
     @validates("day_of_week")
     def validate_day_of_week(self,key,value):
-        return day_of_week_validator(value=value)
+        day_of_week_validator(value=value)
+        return value
 
     @validates("day_of_month")
     def validate_day_of_month(self,key,value):
-        return day_of_month_validator(value=value)
+        day_of_month_validator(value=value)
+        return value
 
     @validates("month_of_year")
     def validate_month_of_year(self,key,value):
-        return month_of_year_validator(value=value)
+        month_of_year_validator(value=value)
+        return value
 
 
 DAYS = 'days'
@@ -223,17 +234,6 @@ class IntervalSchedule(DeclarativeBase):
             timedelta(**{self.period: self.every}),
             nowfun=lambda: datetime.datetime.utcnow()
         )
-
-    @classmethod
-    def from_schedule(cls, schedule, period=SECONDS):
-        with SessionFactory() as session:
-            every = max(schedule.run_every.total_seconds(), 0)
-            record = session.query(cls).filter_by(every=every, period=period).first()
-            if record:
-                return record
-            else:
-                return cls(every=every, period=period)
-
 
     def __str__(self):
         readable_period = None

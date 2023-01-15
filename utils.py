@@ -48,5 +48,8 @@ NEVER_CHECK_TIMEOUT = 100000000
 #         or issubclass(symbol_by_name(scheduler), DatabaseScheduler)
 #     )
 
-
+if __name__ =="__main__":
+    a = 1
+    b = 2
+    print((b and b>=a))
 

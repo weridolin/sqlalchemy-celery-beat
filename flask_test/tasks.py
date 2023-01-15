@@ -16,6 +16,7 @@ class CeleryLoader(AppLoader):
 app = Celery('site')
 app.conf.broker_url = conf.CELERY_BROKER_URL
 app.conf.result_backend = conf.CELERY_RESULT_BACKEND
+# app.conf.beat_sync_every =  True
 # app.config_from_object(conf, namespace='CELERY')
 
 ## 配置队列
