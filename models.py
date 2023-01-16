@@ -10,7 +10,8 @@ from celery import schedules, current_app
 from validators import hour_validator,minute_validator,day_of_month_validator,day_of_week_validator,month_of_year_validator
 from datetime import timedelta
 from celery.utils.log import get_logger
-
+from utils import make_aware
+from clocked import clocked
 
 logger = get_logger(__name__)
 
@@ -254,6 +255,40 @@ class IntervalSchedule(DeclarativeBase):
         return self.period[:-1]
 
 
+
+class ClockedSchedule(DeclarativeBase):
+    """clocked schedule."""
+
+    __tablename__ = "clocked_schedule"
+
+    clocked_time = sa.Column(
+        sa.DateTime,
+        comment='定时任务运行的时间点',
+        default=datetime.datetime.now,
+    ) 
+
+
+
+    def __str__(self):
+        return '{}'.format(make_aware(self.clocked_time))
+
+    @property
+    def schedule(self):
+        c = clocked(clocked_time=self.clocked_time)
+        return c
+
+    # @classmethod
+    # def from_schedule(cls, schedule):
+    #     spec = {'clocked_time': schedule.clocked_time}
+        # try:
+        #     return cls.objects.get(**spec)
+        # except cls.DoesNotExist:
+        #     return cls(**spec)
+        # except MultipleObjectsReturned:
+        #     return cls.objects.filter(**spec).first()
+
+
+
 class PeriodicTasks(DeclarativeBase):
     """Helper table for tracking updates to periodic tasks.
 
@@ -305,20 +340,8 @@ class PeriodicTask(DeclarativeBase):
     # solar_id = sa.Column(sa.INTEGER,sa.ForeignKey("solar_schedule.id"))
     # solar = relationship("SolarSchedule")
 
-    # clocked_id = sa.Column(sa.INTEGER,sa.ForeignKey("clocked_schedule.id"))
-    # clocked = relationship("ClockedSchedule")
-    # solar = models.ForeignKey(
-    #     SolarSchedule, on_delete=models.CASCADE, null=True, blank=True,
-    #     verbose_name=_('Solar Schedule'),
-    #     help_text=_('Solar Schedule to run the task on.  '
-    #                 'Set only one schedule type, leave the others null.'),
-    # )
-    # clocked = models.ForeignKey(
-    #     ClockedSchedule, on_delete=models.CASCADE, null=True, blank=True,
-    #     verbose_name=_('Clocked Schedule'),
-    #     help_text=_('Clocked Schedule to run the task on.  '
-    #                 'Set only one schedule type, leave the others null.'),
-    # )
+    clocked_id = sa.Column(sa.INTEGER,sa.ForeignKey("clocked_schedule.id"))
+    clocked = relationship("ClockedSchedule")
 
     ## 任务的位置参数
     args = sa.Column(
@@ -432,6 +455,12 @@ class PeriodicTask(DeclarativeBase):
     # 不会触发修改到 periodic-tasks表
     no_changes = False
 
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        if self.clocked_id: # clocked只运行一次
+            self.one_off = True
+
     def _clean_expires(self):
         if self.expire_seconds is not None and self.expires:
             raise RuntimeError(
@@ -463,8 +492,8 @@ class PeriodicTask(DeclarativeBase):
             return self.crontab.schedule
         # if self.solar:
         #     return self.solar.schedule
-        # if self.clocked:
-        #     return self.clocked.schedule
+        if self.clocked:
+            return self.clocked.schedule
 
 
 

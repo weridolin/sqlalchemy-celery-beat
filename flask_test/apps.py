@@ -2,7 +2,7 @@ from flask import Flask
 import sys,os
 import threading
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-from models import IntervalSchedule,PeriodicTask,CrontabSchedule
+from models import IntervalSchedule,PeriodicTask,CrontabSchedule,ClockedSchedule
 import json
 from db import SessionFactory
 
@@ -59,6 +59,35 @@ def create_crontab_task():
             session.add(task)
         session.commit()
     return "ok"
+
+@app.route("/create3")
+def create_clocked_task():
+    with SessionFactory() as session:
+        # session.expire_on_commit=False
+        import datetime
+        clocked_time = datetime.datetime.now()+datetime.timedelta(seconds=2*60)
+        # clocked_time = datetime.datetime.strftime(clocked_time,format="YYYY-MM-DD hh:mm:ss")
+        schedule = session.query(ClockedSchedule).filter_by().first()
+        if not schedule:
+            schedule = ClockedSchedule(
+                clocked_time=clocked_time,
+            )
+            session.add(schedule) 
+            session.flush()
+
+        task = session.query(PeriodicTask).filter_by(name='TestTask-clockedtask').first()
+        if not task:
+            task=PeriodicTask(
+                clocked_id=schedule.id,      
+                name='TestTask-clockedtask',        
+                task='task.test_task2',  
+                args=json.dumps([8]),
+            )
+            session.add(task)
+        session.commit()
+    return "ok"
+
+
 
 import time
 @app.route("/update")

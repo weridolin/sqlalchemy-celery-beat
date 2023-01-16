@@ -13,20 +13,20 @@ NEVER_CHECK_TIMEOUT = 100000000
 # now_localtime = getattr(timezone, 'template_localtime', timezone.localtime)
 
 
-# def make_aware(value):
-#     """Force datatime to have timezone information."""
-#     if getattr(settings, 'USE_TZ', False):
-#         # naive datetimes are assumed to be in UTC.
-#         if timezone.is_naive(value):
-#             value = timezone.make_aware(value, timezone.utc)
-#         # then convert to the Django configured timezone.
-#         default_tz = timezone.get_default_timezone()
-#         value = timezone.localtime(value, default_tz)
-#     else:
-#         # naive datetimes are assumed to be in local timezone.
-#         if timezone.is_naive(value):
-#             value = timezone.make_aware(value, timezone.get_default_timezone())
-#     return value
+def make_aware(value):
+    """Force datatime to have timezone information."""
+    # if getattr(settings, 'USE_TZ', False):
+    #     # naive datetimes are assumed to be in UTC.
+    #     if timezone.is_naive(value):
+    #         value = timezone.make_aware(value, timezone.utc)
+    #     # then convert to the Django configured timezone.
+    #     default_tz = timezone.get_default_timezone()
+    #     value = timezone.localtime(value, default_tz)
+    # else:
+    #     # naive datetimes are assumed to be in local timezone.
+    #     if timezone.is_naive(value):
+    #         value = timezone.make_aware(value, timezone.get_default_timezone())
+    return value
 
 
 # def now():
