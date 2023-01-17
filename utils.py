@@ -3,12 +3,13 @@ import time
 import datetime
 import os
 import pytz
-from functools import partial
+import conf
+
 NEVER_CHECK_TIMEOUT = 100000000
 
-USE_TZ = os.environ.get("USE_TZ", True)
-if USE_TZ:
-    TZ = pytz.timezone(os.environ.get("TIME_ZONE", 'Asia/Shanghai'))
+
+if conf.USE_TZ:
+    TZ = pytz.timezone(conf.TIME_ZONE or "Asia/Shanghai")
 else:
     TZ = None
 
@@ -32,7 +33,7 @@ def to_utc(native_time):
     """
         本地时间根据所在时区转成对应的utc时间
     """
-    if not USE_TZ:
+    if not conf.USE_TZ:
         return native_time
     if isinstance(native_time, str):
         native_time = datetime.datetime.strptime(
@@ -45,7 +46,7 @@ def to_native(utc_time):
     """
         utc时间根据时区转换为本地时间
     """
-    if not USE_TZ:
+    if not conf.USE_TZ:
         # 不使用utc，utc_time为本地时间
         return utc_time
     now_stamp = time.time()
@@ -58,7 +59,7 @@ def to_native(utc_time):
 
 
 def now():
-    if USE_TZ and TZ:
+    if conf.USE_TZ and TZ:
         return to_utc(datetime.datetime.now())
     else:
         return datetime.datetime.now()
