@@ -8,3 +8,5 @@ CELERY_RESULT_BACKEND = CELERY_BROKER_URL
 #: from unwanted access (see userguide/security.html)
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
+
+SQLALCHEMY_URL = "sqlite:///" + os.path.join(os.path.dirname(__file__), 'scheduler.db')

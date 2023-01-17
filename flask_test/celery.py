@@ -4,7 +4,7 @@
 import sys,os
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from celery import Celery
-from . import conf
+import conf
 # from celery.loaders.app import AppLoader
 
 app = Celery('site')
