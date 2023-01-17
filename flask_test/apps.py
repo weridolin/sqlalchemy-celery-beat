@@ -1,6 +1,5 @@
 from flask import Flask
 import sys,os
-print(sys.path)
 from models import IntervalSchedule,PeriodicTask,CrontabSchedule,ClockedSchedule
 import json
 from db import SessionFactory

@@ -1,19 +1,11 @@
+
+# import monkey  # TODO
+# monkey.__package__
 import sys,os
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-import asyncio
-import monkey
-monkey.__package__
-from celery.loaders.app import AppLoader
-import os
 from celery import Celery
-import conf
-from celery.loaders.app import AppLoader
-
-class CeleryLoader(AppLoader):
-    def on_worker_process_init(self):
-        asyncio.set_event_loop(asyncio.new_event_loop())
-        return super().on_worker_process_init()
-
+from . import conf
+# from celery.loaders.app import AppLoader
 
 app = Celery('site')
 app.conf.broker_url = conf.CELERY_BROKER_URL
