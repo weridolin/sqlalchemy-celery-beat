@@ -1,41 +1,45 @@
 # -*- coding: utf-8 -*-
+from sqlalchemy import select, insert, update
 import datetime
-import time
 from sqlalchemy import event
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker,scoped_session,relationship,validates
+from sqlalchemy.orm import sessionmaker, scoped_session, relationship, validates
 import os
 import sqlalchemy as sa
-from celery import schedules, current_app
-from validators import hour_validator,minute_validator,day_of_month_validator,day_of_week_validator,month_of_year_validator
+from celery import schedules
+from validators import hour_validator, minute_validator, day_of_month_validator, day_of_week_validator, month_of_year_validator
 from datetime import timedelta
 from celery.utils.log import get_logger
-from utils import make_aware
 from clocked import clocked
+from utils import now, to_native,to_utc
 
 logger = get_logger(__name__)
+
 
 class Base(object):
 
     id = sa.Column(sa.Integer, primary_key=True)
 
     created = sa.Column(
-        sa.DateTime,
-        default=datetime.datetime.now,
+        sa.DateTime(timezone=True),
+        default=datetime.datetime.utcnow,
         nullable=False
     )
     last_update = sa.Column(
-        sa.DateTime,
-        default=datetime.datetime.now,
-        onupdate=datetime.datetime.now,
+        sa.DateTime(timezone=True),
+        default=datetime.datetime.utcnow,
+        onupdate=datetime.datetime.utcnow,
         nullable=False
     )
 
+
 DeclarativeBase = declarative_base(cls=Base)
+
 
 def cronexp(field):
     """Representation of cron expression."""
     return field and str(field).replace(' ', '') or '*'
+
 
 class CrontabSchedule(DeclarativeBase):
     """
@@ -50,7 +54,7 @@ class CrontabSchedule(DeclarativeBase):
             |    |    |_____________日期1--31
             |    |__________________小时0--23
             |_______________________分钟0--59
-        
+
         *:表示所有
         a-b:表示 a到b
         a,b:表示a和b
@@ -101,12 +105,11 @@ class CrontabSchedule(DeclarativeBase):
     #     comment='Timezone to Run the Cron Schedule on. Default is UTC.',
     # )
 
-
     def __str__(self):
         return '{0} {1} {2} {3} {4} (m/h/dM/MY/d) {5}'.format(
             cronexp(self.minute), cronexp(self.hour),
             cronexp(self.day_of_month), cronexp(self.month_of_year),
-            cronexp(self.day_of_week), 
+            cronexp(self.day_of_week),
             # str(self.timezone)
             ""
         )
@@ -124,8 +127,8 @@ class CrontabSchedule(DeclarativeBase):
         return crontab
 
     @classmethod
-    def from_schedule(cls, session,schedule):
-        ## schedule: celery.scheduler.crontab
+    def from_schedule(cls, session, schedule):
+        # schedule: celery.scheduler.crontab
         spec = {'minute': schedule._orig_minute,
                 'hour': schedule._orig_hour,
                 'day_of_week': schedule._orig_day_of_week,
@@ -138,34 +141,34 @@ class CrontabSchedule(DeclarativeBase):
             if record:
                 return record
             else:
-                new  = cls(**spec)
+                new = cls(**spec)
                 session.add(new)
                 return new
         finally:
             session.commit()
 
     @validates("minute")
-    def validate_minute(self,key,value):
+    def validate_minute(self, key, value):
         minute_validator(value=value)
         return value
 
     @validates("hour")
-    def validate_hour(self,key,value):
+    def validate_hour(self, key, value):
         hour_validator(value=value)
         return value
 
     @validates("day_of_week")
-    def validate_day_of_week(self,key,value):
+    def validate_day_of_week(self, key, value):
         day_of_week_validator(value=value)
         return value
 
     @validates("day_of_month")
-    def validate_day_of_month(self,key,value):
+    def validate_day_of_month(self, key, value):
         day_of_month_validator(value=value)
         return value
 
     @validates("month_of_year")
-    def validate_month_of_year(self,key,value):
+    def validate_month_of_year(self, key, value):
         month_of_year_validator(value=value)
         return value
 
@@ -191,6 +194,7 @@ SINGULAR_PERIODS = (
     (SECONDS, 'Second'),
     (MICROSECONDS, 'Microsecond'),
 )
+
 
 class IntervalSchedule(DeclarativeBase):
     """
@@ -220,7 +224,6 @@ class IntervalSchedule(DeclarativeBase):
         sa.String(24),
         comment='循环周期,每天/分钟/小时/秒/微秒',
     )
-
 
     @validates('every')
     def validate_every(self, key, every):
@@ -255,27 +258,32 @@ class IntervalSchedule(DeclarativeBase):
         return self.period[:-1]
 
 
-
 class ClockedSchedule(DeclarativeBase):
     """clocked schedule."""
 
     __tablename__ = "clocked_schedule"
-
     clocked_time = sa.Column(
-        sa.DateTime,
-        comment='定时任务运行的时间点',
-        default=datetime.datetime.now,
-    ) 
-
-
+        sa.DateTime(timezone=True),
+        comment='定时任务运行的时间点(utc)',
+        default=datetime.datetime.utcnow,
+    )
 
     def __str__(self):
-        return '{}'.format(make_aware(self.clocked_time))
+        return '{}'.format(to_native(self.clocked_time))
 
     @property
     def schedule(self):
-        c = clocked(clocked_time=self.clocked_time)
+        # clocked_time is utc time
+        c = clocked(clocked_time=to_native(self.clocked_time), nowfun=now)
         return c
+
+    @validates('clocked_time')
+    def validate_clocked_time(self, _, clocked_time):
+        assert isinstance(
+            clocked_time, datetime.datetime), "clocked_time can only be instance of datetime object"
+        if not clocked_time.utcoffset():
+            return to_utc(clocked_time)
+        return clocked_time
 
     # @classmethod
     # def from_schedule(cls, schedule):
@@ -286,7 +294,6 @@ class ClockedSchedule(DeclarativeBase):
         #     return cls(**spec)
         # except MultipleObjectsReturned:
         #     return cls.objects.filter(**spec).first()
-
 
 
 class PeriodicTasks(DeclarativeBase):
@@ -302,7 +309,7 @@ class PeriodicTasks(DeclarativeBase):
     __tablename__ = "periodic_tasks"
 
     @classmethod
-    def last_change(cls,session):
+    def last_change(cls, session):
         record = session.query(cls).get(1)
         if record:
             return record.last_update
@@ -312,7 +319,6 @@ class PeriodicTasks(DeclarativeBase):
             session.commit()
             return new.last_update
 
-    
 
 class PeriodicTask(DeclarativeBase):
     """
@@ -322,42 +328,42 @@ class PeriodicTask(DeclarativeBase):
     __tablename__ = "periodic_task"
 
     name = sa.Column(
-        sa.String(256), 
+        sa.String(256),
         unique=True,
         comment='定时任务名称',
     )
-    task = sa.Column(   
+    task = sa.Column(
         sa.String(256),
         comment='定时任务的执行路径(例如:"proj.tasks.import_contacts")',
     )
 
-    interval_id = sa.Column(sa.INTEGER,sa.ForeignKey("interval_schedule.id"))
+    interval_id = sa.Column(sa.INTEGER, sa.ForeignKey("interval_schedule.id"))
     interval = relationship("IntervalSchedule")
 
-    crontab_id = sa.Column(sa.INTEGER,sa.ForeignKey("crontab_schedule.id"))
+    crontab_id = sa.Column(sa.INTEGER, sa.ForeignKey("crontab_schedule.id"))
     crontab = relationship("CrontabSchedule")
 
     # solar_id = sa.Column(sa.INTEGER,sa.ForeignKey("solar_schedule.id"))
     # solar = relationship("SolarSchedule")
 
-    clocked_id = sa.Column(sa.INTEGER,sa.ForeignKey("clocked_schedule.id"))
+    clocked_id = sa.Column(sa.INTEGER, sa.ForeignKey("clocked_schedule.id"))
     clocked = relationship("ClockedSchedule")
 
-    ## 任务的位置参数
+    # 任务的位置参数
     args = sa.Column(
         sa.JSON,
         default='[]',
         comment='JSON encoded positional arguments (Example: ["arg1", "arg2"])'
     )
 
-    ## 任务关键词参数
+    # 任务关键词参数
     kwargs = sa.Column(
         sa.JSON,
         default='{}',
         comment='JSON encoded keyword arguments (Example: {"argument": "value"})',
     )
 
-    ## 任务被beat发送到的broker的队列
+    # 任务被beat发送到的broker的队列
     queue = sa.Column(
         sa.String(256),
         nullable=True,
@@ -386,65 +392,65 @@ class PeriodicTask(DeclarativeBase):
         comment='JSON encoded message headers for the AMQP message.',
     )
 
-    ## 任务的优先级
+    # 任务的优先级
     priority = sa.Column(
         sa.INTEGER,
         default=None,
         nullable=True,
         comment='Priority Number between 0 and 255. Supported by: RabbitMQ, Redis (priority reversed, 0 is highest).'
     )
-    
-    ## 过期日期
+
+    # 过期日期
     expires = sa.Column(
         sa.DateTime,
         nullable=True,
         comment='Datetime after which the schedule will no longer trigger the task to run',
     )
-    ## 过期时间:秒
+    # 过期时间:秒
     expire_seconds = sa.Column(
         sa.Integer,
         nullable=True,
         comment='Timedelta with seconds which the schedule will no longer trigger the task to run',
     )
-    ## 是否只运行一次
-    one_off =  sa.Column(
+    # 是否只运行一次
+    one_off = sa.Column(
         sa.BOOLEAN,
         default=False,
         comment='If True, the schedule will only run the task a single time',
     )
 
-    ## 开始运行时间
+    # 开始运行时间
     start_time = sa.Column(
         sa.DateTime,
         nullable=True,
         comment='Datetime when the schedule should begin triggering the task to run',
     )
-    ## 是否启用该定时任务
-    enabled =  sa.Column(
+    # 是否启用该定时任务
+    enabled = sa.Column(
         sa.BOOLEAN,
         default=True,
         comment='Set to False to disable the schedule',
     )
 
-    ## 最后一次运行时间
+    # 最后一次运行时间
     last_run_at = sa.Column(
-        sa.DateTime, 
+        sa.DateTime,
         nullable=True,
         comment='Datetime that the schedule last triggered the task to run. Reset to None if enabled is set to False.',
     )
-    ## 已经运行总数
+    # 已经运行总数
     total_run_count = sa.Column(
         sa.INTEGER,
-        default=0, 
+        default=0,
         comment='Running count of how many times the schedule has triggered the task',
     )
-    ## 最后一次修改时间
+    # 最后一次修改时间
     date_changed = sa.Column(
         sa.DateTime,
         comment='Datetime that this PeriodicTask was last modified',
     )
 
-    ## 任务描述
+    # 任务描述
     description = sa.Column(
         sa.TEXT,
         comment='Detailed description about the details of this Periodic Task',
@@ -455,10 +461,9 @@ class PeriodicTask(DeclarativeBase):
     # 不会触发修改到 periodic-tasks表
     no_changes = False
 
-
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        if self.clocked_id: # clocked只运行一次
+        if self.clocked_id:  # clocked只运行一次
             self.one_off = True
 
     def _clean_expires(self):
@@ -475,12 +480,12 @@ class PeriodicTask(DeclarativeBase):
         fmt = '{0.name}: {{no schedule}}'
         if self.interval:
             fmt = '{0.name}: {0.interval}'
-        # if self.crontab:
-        #     fmt = '{0.name}: {0.crontab}'
+        if self.crontab:
+            fmt = '{0.name}: {0.crontab}'
         # if self.solar:
         #     fmt = '{0.name}: {0.solar}'
-        # if self.clocked:
-        #     fmt = '{0.name}: {0.clocked}'
+        if self.clocked:
+            fmt = '{0.name}: {0.clocked}'
         return fmt.format(self)
 
     @property
@@ -496,37 +501,40 @@ class PeriodicTask(DeclarativeBase):
             return self.clocked.schedule
 
 
-
 @event.listens_for(PeriodicTask, 'after_delete')
 def receive_after_delete(mapper, connection, target):
     # print("delete Periodic Task")
-    update_change_time(connection,target)
+    update_change_time(connection, target)
+
 
 @event.listens_for(PeriodicTask, 'after_insert')
 def receive_after_insert(mapper, connection, target):
     # print("insert Periodic Task")
-    update_change_time(connection,target)
+    update_change_time(connection, target)
+
 
 @event.listens_for(PeriodicTask, 'after_update')
 def receive_after_update(mapper, connection, target):
-    print("update Periodic Task")
-    update_change_time(connection,target)
+    # print("update Periodic Task")
+    update_change_time(connection, target)
 
 
-from sqlalchemy import select,insert,update
-def update_change_time(conn,instance):
-    ### 这里是更新修改记录表
-    # if not instance.no_changes:
+def update_change_time(conn, instance):
+    # 这里是更新修改记录表
     if not instance.no_changes:
-        logger.info(f"detect a periodic change, update table[periodic_tasks] change time...:{datetime.datetime.now()}")
-        record = conn.execute(select(PeriodicTasks).where(PeriodicTasks.id == 1)).fetchone()
+        logger.info(
+            f"detect a periodic change, update table[periodic_tasks] change time...:{datetime.datetime.now()}")
+        record = conn.execute(select(PeriodicTasks).where(
+            PeriodicTasks.id == 1)).fetchone()
         if record:
-            conn.execute(update(PeriodicTasks).where(PeriodicTasks.id == 1).values(last_update=datetime.datetime.now()))
+            conn.execute(update(PeriodicTasks).where(
+                PeriodicTasks.id == 1).values(last_update=datetime.datetime.now()))
         else:
-            conn.execute(insert(PeriodicTasks).values(last_update=datetime.datetime.now()))
+            conn.execute(insert(PeriodicTasks).values(
+                last_update=datetime.datetime.now()))
 
 
-if __name__=="__main__":
+if __name__ == "__main__":
     import sqlalchemy.orm.identity
     # import threading
     # import sqlalchemy.orm.state
@@ -534,7 +542,6 @@ if __name__=="__main__":
     # DeclarativeBase.metadata.create_all(engine)
     # session1 = SessionFactory()
 
-    
     # tasks=PeriodicTask(
     #     interval_id=1,                  # we created this above.
     #     name='TestTask1-23',          # simply describes this periodic task.
@@ -544,7 +551,6 @@ if __name__=="__main__":
     # session1.add(tasks)
     # session1.commit()
 
-
     # t = threading.Thread(target=tar)
     # t.start()
     # t.join()
@@ -553,7 +559,7 @@ if __name__=="__main__":
     # session.delete(res)
     # # session.flush()
     # print(inspect(res).deleted,inspect(res).detached,inspect(res).pending)
-    
+
     # print(session.identity_map._dict,session.new,session.deleted,session.dirty)
     # res = session.query(PeriodicTask).get(6)
     # print(session.identity_map._dict

@@ -1,11 +1,13 @@
 import sys,os
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 import asyncio
+import monkey
+monkey.__package__
 from celery.loaders.app import AppLoader
 import os
-
 from celery import Celery
 import conf
+from celery.loaders.app import AppLoader
 
 class CeleryLoader(AppLoader):
     def on_worker_process_init(self):

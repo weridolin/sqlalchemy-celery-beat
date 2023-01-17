@@ -3,9 +3,7 @@ from sqlalchemy.orm import scoped_session
 from db import SessionFactory
 from utils import NEVER_CHECK_TIMEOUT
 from models import (
-    PeriodicTask, PeriodicTasks, IntervalSchedule, CrontabSchedule
-    # CrontabSchedule, IntervalSchedule,
-    # SolarSchedule, ClockedSchedule
+    PeriodicTask, PeriodicTasks, IntervalSchedule, CrontabSchedule,ClockedSchedule
 )
 from kombu.utils.json import dumps, loads
 from kombu.utils.encoding import safe_str, safe_repr
@@ -47,10 +45,10 @@ class ModelEntry(ScheduleEntry):
 
     # schedule对应的 schedule model
     model_schedules = (
-        # (schedules.crontab, CrontabSchedule, 'crontab'),\\\
+        (schedules.crontab, CrontabSchedule, 'crontab'),
         (schedules.schedule, IntervalSchedule, 'interval'),
         # (schedules.solar, SolarSchedule, 'solar'),
-        # (clocked, ClockedSchedule, 'clocked')
+        (clocked, ClockedSchedule, 'clocked')
     )
 
     # 每一次调用后,该task row需要保存的字段

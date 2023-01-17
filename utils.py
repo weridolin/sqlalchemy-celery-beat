@@ -1,55 +1,55 @@
-# """Utilities."""
-# # -- XXX This module must not use translation as that causes
-# # -- a recursive loader import!
-# from time import sleep
-# # from django.conf import settings
-# from django.utils import timezone
 
-# # is_aware = timezone.is_aware
-# # celery schedstate return None will make it not work
 NEVER_CHECK_TIMEOUT = 100000000
+import pytz,os,datetime,time
+from functools import partial
 
-# # see Issue #222
-# now_localtime = getattr(timezone, 'template_localtime', timezone.localtime)
+TZ = pytz.timezone(os.environ.get("TIME_ZONE",'Asia/Shanghai'))
 
+def add_tz(value):
+    """
+        本地时间添加时区信息：
+        2023-01-17 13:39:01.324367 tz='Asia/Shanghai' -> 2023-01-17 13:39:01.324367+08:00
+    """ 
+    if isinstance(value,str):
+        value = datetime.datetime.strptime(value,"%Y-%m-%d %H:%M:%S")
+    if value.utcoffset():
+        return value
+    else:
+        local = TZ.localize(value)
+        value = local.astimezone(tz=TZ)
+        return value
 
-def make_aware(value):
-    """Force datatime to have timezone information."""
-    # if getattr(settings, 'USE_TZ', False):
-    #     # naive datetimes are assumed to be in UTC.
-    #     if timezone.is_naive(value):
-    #         value = timezone.make_aware(value, timezone.utc)
-    #     # then convert to the Django configured timezone.
-    #     default_tz = timezone.get_default_timezone()
-    #     value = timezone.localtime(value, default_tz)
-    # else:
-    #     # naive datetimes are assumed to be in local timezone.
-    #     if timezone.is_naive(value):
-    #         value = timezone.make_aware(value, timezone.get_default_timezone())
-    return value
+def to_utc(native_time):
+    """
+        本地时间根据所在时区转成对应的utc时间
+    """
+    if isinstance(native_time,str):
+        native_time = datetime.datetime.strptime(native_time,"%Y-%m-%d %H:%M:%S")  
+    local_dt = TZ.localize(native_time, is_dst=None)
+    return local_dt.astimezone(pytz.utc)
 
+def to_native(utc_time):
+    """
+        utc时间根据时区转换为本地时间
+    """
+    now_stamp = time.time()
+    local_time = datetime.datetime.fromtimestamp(now_stamp)
+    utc_time = datetime.datetime.utcfromtimestamp(now_stamp)
+    offset = local_time - utc_time
+    local = utc_time+offset
+    local_dt = TZ.localize(local, is_dst=None)
+    return  local_dt.astimezone(TZ)
 
-# def now():
-#     """Return the current date and time."""
-#     if getattr(settings, 'USE_TZ', False):
-#         return now_localtime(timezone.now())
-#     else:
-#         return timezone.now()
-
-
-# def is_database_scheduler(scheduler):
-#     """Return true if Celery is configured to use the db scheduler."""
-#     if not scheduler:
-#         return False
-#     from kombu.utils import symbol_by_name
-#     from .schedulers import DatabaseScheduler
-#     return (
-#         scheduler == 'django'
-#         or issubclass(symbol_by_name(scheduler), DatabaseScheduler)
-#     )
+def now():
+    if TZ:
+        return add_tz(datetime.datetime.now())
+    else:
+        return datetime.datetime.now()
 
 if __name__ =="__main__":
-    a = 1
-    b = 2
-    print((b and b>=a))
-
+    # print(add_tz(datetime.datetime.now()))
+    print(now())
+    # print(to_utc(datetime.datetime.now()))
+    print(to_native(datetime.datetime.utcnow()))
+    # local_dt = TZ.localize(datetime.datetime.now(), is_dst=None)
+    ...
