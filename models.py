@@ -109,7 +109,7 @@ class CrontabSchedule(DeclarativeBase):
             cronexp(self.minute), cronexp(self.hour),
             cronexp(self.day_of_month), cronexp(self.month_of_year),
             cronexp(self.day_of_week),
-            # str(self.timezone)
+            # str(self.timezone) # todo
             ""
         )
 
@@ -281,16 +281,6 @@ class ClockedSchedule(DeclarativeBase):
         assert isinstance(
             clocked_time, datetime.datetime), "clocked_time can only be instance of datetime object"
         return to_utc(clocked_time)
-
-    # @classmethod
-    # def from_schedule(cls, schedule):
-    #     spec = {'clocked_time': schedule.clocked_time}
-        # try:
-        #     return cls.objects.get(**spec)
-        # except cls.DoesNotExist:
-        #     return cls(**spec)
-        # except MultipleObjectsReturned:
-        #     return cls.objects.filter(**spec).first()
 
 
 class PeriodicTasks(DeclarativeBase):
@@ -533,30 +523,3 @@ def update_change_time(conn, instance):
 
 if __name__ == "__main__":
     import sqlalchemy.orm.identity
-    # import threading
-    # import sqlalchemy.orm.state
-    # from sqlalchemy import inspect
-    # DeclarativeBase.metadata.create_all(engine)
-    # session1 = SessionFactory()
-
-    # tasks=PeriodicTask(
-    #     interval_id=1,                  # we created this above.
-    #     name='TestTask1-23',          # simply describes this periodic task.
-    #     task='core.celery.test_task',  # name of task.
-    #     args=8,
-    # )
-    # session1.add(tasks)
-    # session1.commit()
-
-    # t = threading.Thread(target=tar)
-    # t.start()
-    # t.join()
-    # res = session.query(PeriodicTask).get(1)
-    # res.name="Ssss"
-    # session.delete(res)
-    # # session.flush()
-    # print(inspect(res).deleted,inspect(res).detached,inspect(res).pending)
-
-    # print(session.identity_map._dict,session.new,session.deleted,session.dirty)
-    # res = session.query(PeriodicTask).get(6)
-    # print(session.identity_map._dict

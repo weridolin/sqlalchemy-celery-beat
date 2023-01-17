@@ -6,14 +6,15 @@ from events import on_db_update
 
 # 重新写 beat.Service.start,主要是为了随时能够中断两次tick之间的sleep
 # todo 当处于两次tick之间的sleep状态时，在其他进程修改了数据库中的task，如何让scheduler也能监听到?:
+# patch 逻辑参考 @https://github.com/kai3341/celery-pool-asyncio
 # 1.修改scheduler的sync_every,缩小两次tick之间的最大间隔事件
 # 2.others
 
 
 def Service__start(self, embedded_process=False):
-    beat.info('beat: Starting...(sqlalchemy-celery-beat custom start)')
+    beat.info('beat: Starting...(sqlalchemy-celery-beat has patched)')
     beat.debug('beat: Ticking with max interval->%s',
-               beat.humanize_seconds(self.scheduler.max_interval))
+            beat.humanize_seconds(self.scheduler.max_interval))
 
     beat.signals.beat_init.send(sender=self)
     if embedded_process:

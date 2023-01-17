@@ -4,7 +4,7 @@ import datetime
 
 class clocked(schedules.BaseSchedule):
     """ 
-        定点定时触发,这里拿到的是utc
+        在规定时间点运行task
     """
 
     def __init__(self, clocked_time, nowfun=None, app=None):

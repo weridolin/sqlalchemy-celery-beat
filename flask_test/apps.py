@@ -1,7 +1,6 @@
 from flask import Flask
 import sys,os
-import threading
-sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+print(sys.path)
 from models import IntervalSchedule,PeriodicTask,CrontabSchedule,ClockedSchedule
 import json
 from db import SessionFactory
@@ -60,7 +59,6 @@ def create_crontab_task():
         session.commit()
     return "ok"
 
-from utils import to_utc
 @app.route("/create3")
 def create_clocked_task():
     with SessionFactory() as session:
