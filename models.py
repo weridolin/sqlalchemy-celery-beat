@@ -3,8 +3,7 @@ from sqlalchemy import select, insert, update
 import datetime
 from sqlalchemy import event
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, scoped_session, relationship, validates
-import os
+from sqlalchemy.orm import  relationship, validates
 import sqlalchemy as sa
 from celery import schedules
 from validators import hour_validator, minute_validator, day_of_month_validator, day_of_week_validator, month_of_year_validator
@@ -22,13 +21,13 @@ class Base(object):
 
     created = sa.Column(
         sa.DateTime(timezone=True),
-        default=datetime.datetime.utcnow,
+        default=now,
         nullable=False
     )
     last_update = sa.Column(
         sa.DateTime(timezone=True),
-        default=datetime.datetime.utcnow,
-        onupdate=datetime.datetime.utcnow,
+        default=now,
+        onupdate=now,
         nullable=False
     )
 
@@ -264,8 +263,8 @@ class ClockedSchedule(DeclarativeBase):
     __tablename__ = "clocked_schedule"
     clocked_time = sa.Column(
         sa.DateTime(timezone=True),
-        comment='定时任务运行的时间点(utc)',
-        default=datetime.datetime.utcnow,
+        comment='定时任务运行的时间点',
+        default=now,
     )
 
     def __str__(self):
@@ -281,9 +280,7 @@ class ClockedSchedule(DeclarativeBase):
     def validate_clocked_time(self, _, clocked_time):
         assert isinstance(
             clocked_time, datetime.datetime), "clocked_time can only be instance of datetime object"
-        if not clocked_time.utcoffset():
-            return to_utc(clocked_time)
-        return clocked_time
+        return to_utc(clocked_time)
 
     # @classmethod
     # def from_schedule(cls, schedule):
